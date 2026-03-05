@@ -121,7 +121,7 @@ async def sync_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"└ За сегодня: {today_count}\n"
                 f"└ За вчера: {yesterday_count}\n"
                 f"└ Всего: {total_count}\n\n"
-                f"⏰ Следующая синхронизация: 3:00 ночи"
+                f"⏰ Следующая синхронизация: 8:08 утра"
             )
         else:
             message = "😴 База данных пока пуста"
