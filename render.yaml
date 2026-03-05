@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: lastfm-telegram-bot
+    runtime: python
+    region: frankfurt  # или oregon, если хочешь
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      pip install python-telegram-bot==20.7 psycopg2-binary==2.9.9 python-dotenv==1.0.0 requests==2.31.0
+    startCommand: cd telegram_bot && python bot.py
+    healthCheckPath: /
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: ALLOWED_USERS
+        sync: false
+      - key: SUPABASE_HOST
+        sync: false
+      - key: SUPABASE_PORT
+        sync: false
+      - key: SUPABASE_DATABASE
+        sync: false
+      - key: SUPABASE_USER
+        sync: false
+      - key: SUPABASE_PASSWORD
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
