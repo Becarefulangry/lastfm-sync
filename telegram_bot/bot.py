@@ -170,5 +170,37 @@ def main():
     logger.info("Бот запущен...")
     app.run_polling()
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+    
+    def log_message(self, format, *args):
+        return  # Отключаем логи HTTP-сервера
+
+def run_http_server():
+    port = int(os.environ.get('PORT', 8000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    print(f"🌐 HTTP server listening on port {port}")
+    server.serve_forever()
+
+# В функции main() добавь запуск HTTP-сервера в отдельном потоке
+# Примерно так:
+def main():
+    # ... существующий код ...
+    
+    # Запускаем HTTP-сервер в отдельном потоке
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
+    
+    # Запускаем бота
+    logger.info("Бот запущен...")
+    app.run_polling()
+
 if __name__ == '__main__':
     main()
