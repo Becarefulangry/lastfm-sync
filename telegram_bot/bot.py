@@ -1,6 +1,8 @@
 import logging
 import psycopg2
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -29,11 +31,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ==================== HTTP-сервер для Render ====================
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+    
+    def log_message(self, format, *args):
+        return  # Отключаем логи HTTP-сервера
+
+def run_http_server():
+    port = int(os.environ.get('PORT', 8000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    print(f"🌐 HTTP server listening on port {port}")
+    server.serve_forever()
+
+# ==================== Проверка пользователя ====================
+
 def check_user(user_id):
     """Проверяет, разрешён ли пользователь"""
     if not ALLOWED_USERS:
         return True
     return user_id in ALLOWED_USERS
+
+# ==================== Команды бота ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
@@ -138,24 +162,22 @@ async def sync_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Нет доступа")
         return
     
-    await update.message.reply_text("🔄 Запускаю синхронизацию...")
-    
-    try:
-        # Здесь можно вызвать функцию синхронизации
-        # Но проще пока просто сказать, что это делается автоматически
-        await update.message.reply_text(
-            "✅ Синхронизация запускается автоматически каждый день в 3:00\n\n"
-            "Если хочешь проверить статус - используй /sync"
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в /syncnow: {e}")
-        await update.message.reply_text("❌ Ошибка")
+    await update.message.reply_text(
+        "✅ Синхронизация запускается автоматически каждый день в 8:08 утра\n\n"
+        "Если хочешь проверить статус - используй /sync"
+    )
+
+# ==================== Запуск бота ====================
 
 def main():
     """Запуск бота"""
     if not TELEGRAM_TOKEN:
         logger.error("Нет TELEGRAM_TOKEN в .env")
         return
+    
+    # Запускаем HTTP-сервер в отдельном потоке
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
     
     # Создаём приложение
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -165,38 +187,6 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("sync", sync_status))
     app.add_handler(CommandHandler("syncnow", sync_now))
-    
-    # Запускаем бота
-    logger.info("Бот запущен...")
-    app.run_polling()
-
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'Bot is running')
-    
-    def log_message(self, format, *args):
-        return  # Отключаем логи HTTP-сервера
-
-def run_http_server():
-    port = int(os.environ.get('PORT', 8000))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    print(f"🌐 HTTP server listening on port {port}")
-    server.serve_forever()
-
-# В функции main() добавь запуск HTTP-сервера в отдельном потоке
-# Примерно так:
-def main():
-    # ... существующий код ...
-    
-    # Запускаем HTTP-сервер в отдельном потоке
-    http_thread = threading.Thread(target=run_http_server, daemon=True)
-    http_thread.start()
     
     # Запускаем бота
     logger.info("Бот запущен...")
