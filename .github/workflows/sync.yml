@@ -2,8 +2,8 @@ name: Sync Last.fm Scrobbles
 
 on:
   schedule:
-    # Запуск каждый день в 8:08 утра
-    - cron: '45 11 * * *'
+    # Запуск для теста в 11:39
+    - cron: '39 11 * * *'
   # Возможность запустить вручную
   workflow_dispatch:
 
@@ -13,10 +13,10 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4.2.2  # Конкретная версия вместо v3
+      uses: actions/checkout@v4.2.2
     
     - name: Set up Python
-      uses: actions/setup-python@v5.4.0  # Конкретная версия вместо v4
+      uses: actions/setup-python@v5.4.0
       with:
         python-version: '3.11'
     
