@@ -2,9 +2,8 @@ name: Sync Last.fm Scrobbles
 
 on:
   schedule:
-    # Запуск для теста в 11:39
-    - cron: '39 11 * * *'
-  # Возможность запустить вручную
+    # Запуск каждый день в 3:03 ночи
+    - cron: '3 3 * * *'
   workflow_dispatch:
 
 jobs:
