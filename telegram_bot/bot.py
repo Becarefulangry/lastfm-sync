@@ -2,6 +2,7 @@ import logging
 import psycopg2
 import os
 import threading
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from telegram import Update
@@ -14,6 +15,10 @@ load_dotenv()
 # Настройки
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 ALLOWED_USERS = [int(id) for id in os.getenv('ALLOWED_USERS', '').split(',') if id]
+
+# GitHub
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+GITHUB_REPO = os.getenv('GITHUB_REPO')  # например "Becarefulangry/lastfm-sync"
 
 # Supabase
 SUPABASE_CONFIG = {
@@ -39,7 +44,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b'Bot is running')
-    
+
     def log_message(self, format, *args):
         return  # Отключаем логи HTTP-сервера
 
@@ -65,12 +70,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_user(user.id):
         await update.message.reply_text("⛔ У вас нет доступа к этому боту.")
         return
-    
+
     await update.message.reply_text(
         f"🎵 Привет, {user.first_name}!\n\n"
         f"Я бот для отслеживания твоей музыки с Last.fm.\n\n"
         f"📋 Доступные команды:\n"
         f"/sync - статус синхронизации\n"
+        f"/syncnow - запустить синхронизацию вручную\n"
         f"/help - помощь"
     )
 
@@ -79,10 +85,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_user(update.effective_user.id):
         await update.message.reply_text("⛔ Нет доступа")
         return
-    
+
     await update.message.reply_text(
         "🤖 **Команды бота:**\n\n"
         "/sync - статус синхронизации с Last.fm\n"
+        "/syncnow - запустить синхронизацию вручную\n"
         "/start - приветствие\n"
         "/help - это сообщение",
         parse_mode='Markdown'
@@ -93,13 +100,13 @@ async def sync_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_user(update.effective_user.id):
         await update.message.reply_text("⛔ Нет доступа")
         return
-    
+
     await update.message.reply_text("🔍 Получаю статус...")
-    
+
     try:
         conn = psycopg2.connect(**SUPABASE_CONFIG)
         cur = conn.cursor()
-        
+
         # Последний трек
         cur.execute("""
             SELECT artist, track, play_date 
@@ -108,7 +115,7 @@ async def sync_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             LIMIT 1
         """)
         last = cur.fetchone()
-        
+
         # Количество за сегодня
         cur.execute("""
             SELECT COUNT(*) 
@@ -116,7 +123,7 @@ async def sync_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             WHERE DATE(play_date) = CURRENT_DATE
         """)
         today_count = cur.fetchone()[0]
-        
+
         # Количество за вчера
         cur.execute("""
             SELECT COUNT(*) 
@@ -124,18 +131,18 @@ async def sync_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             WHERE DATE(play_date) = CURRENT_DATE - 1
         """)
         yesterday_count = cur.fetchone()[0]
-        
+
         # Общее количество
         cur.execute("SELECT COUNT(*) FROM public.scrobbles")
         total_count = cur.fetchone()[0]
-        
+
         cur.close()
         conn.close()
-        
+
         if last:
             artist, track, play_date = last
             time_str = play_date.strftime('%H:%M, %d.%m.%Y')
-            
+
             message = (
                 f"📊 **Статус синхронизации**\n\n"
                 f"🎵 Последний трек:\n"
@@ -145,27 +152,46 @@ async def sync_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"└ За сегодня: {today_count}\n"
                 f"└ За вчера: {yesterday_count}\n"
                 f"└ Всего: {total_count}\n\n"
-                f"⏰ Следующая синхронизация: 8:08 утра"
+                f"⏰ Следующая синхронизация: 3:03 ночи"
             )
         else:
             message = "😴 База данных пока пуста"
-        
+
         await update.message.reply_text(message, parse_mode='Markdown')
-        
+
     except Exception as e:
         logger.error(f"Ошибка в /sync: {e}")
         await update.message.reply_text("❌ Ошибка при получении статуса")
 
 async def sync_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /syncnow - ручной запуск синхронизации"""
+    """Команда /syncnow — ручной запуск синхронизации через GitHub Actions"""
     if not check_user(update.effective_user.id):
         await update.message.reply_text("⛔ Нет доступа")
         return
-    
-    await update.message.reply_text(
-        "✅ Синхронизация запускается автоматически каждый день в 8:08 утра\n\n"
-        "Если хочешь проверить статус - используй /sync"
-    )
+
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        await update.message.reply_text("❌ GitHub токен не настроен")
+        return
+
+    await update.message.reply_text("🔄 Запускаю синхронизацию...")
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/sync.yml/dispatches"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    data = {
+        "ref": "main"  # ветка, откуда запускать
+    }
+
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 204:
+            await update.message.reply_text("✅ Синхронизация запущена! Через пару минут проверь /sync")
+        else:
+            await update.message.reply_text(f"❌ Ошибка GitHub: {response.status_code}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
 
 # ==================== Запуск бота ====================
 
@@ -174,20 +200,20 @@ def main():
     if not TELEGRAM_TOKEN:
         logger.error("Нет TELEGRAM_TOKEN в .env")
         return
-    
+
     # Запускаем HTTP-сервер в отдельном потоке
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
-    
+
     # Создаём приложение
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
+
     # Добавляем обработчики команд
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("sync", sync_status))
     app.add_handler(CommandHandler("syncnow", sync_now))
-    
+
     # Запускаем бота
     logger.info("Бот запущен...")
     app.run_polling()
